@@ -60,13 +60,6 @@
 		};
 	};
 
-	rgb_led: ws2812 {
-		compatible = "worldsemi,ws2812-gpio";
-		chain-length = <1>;
-		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
-		reset-delay = <50>;
-		gpios = <&gpio0 16 GPIO_ACTIVE_HIGH>;
-	};
 };
 
 &adc {
@@ -232,5 +225,25 @@ zephyr_udc0: &usbd {
 
 	cdc_acm_uart0: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
+	};
+};
+
+/* WS2812 status LED, timed by SPIM2 on MOSI; bit-banged GPIO garbled the colours */
+&spi2 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	pinctrl-0 = <&spi2_default>;
+	pinctrl-1 = <&spi2_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	rgb_led: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <4000000>;
+		chain-length = <1>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		spi-one-frame = <0x70>;
+		spi-zero-frame = <0x40>;
+		reset-delay = <50>;
 	};
 };
