@@ -105,8 +105,38 @@ end:
 	return ret;
 }
 
+#define ERASE_BLOCK_SIZE 0x10000U
+#define BLANK_CHECK_SIZE 4096U
+
+/* Read back a block, true if every byte is erased */
+static int block_is_blank(off_t offset, bool *blank)
+{
+	static uint8_t buf[BLANK_CHECK_SIZE];
+
+	*blank = true;
+	for (off_t pos = offset; pos < offset + ERASE_BLOCK_SIZE; pos += sizeof(buf)) {
+		int ret = flash_read(flash, pos, buf, sizeof(buf));
+
+		if (ret < 0) {
+			return ret;
+		}
+		for (size_t i = 0; i < sizeof(buf); i++) {
+			if (buf[i] != 0xffU) {
+				*blank = false;
+				return 0;
+			}
+		}
+	}
+	return 0;
+}
+
+/*
+ * Erases only the 64 KiB blocks holding data, so a mostly blank chip takes
+ * seconds instead of a minutes-long chip erase. Every block is read back blank.
+ */
 static int cmd_flash_erase_all(const struct shell *sh, size_t argc, char **argv)
 {
+	unsigned int erased = 0;
 	uint64_t flash_size;
 	int ret;
 
@@ -121,9 +151,6 @@ static int cmd_flash_erase_all(const struct shell *sh, size_t argc, char **argv)
 	if (ret < 0) {
 		return ret;
 	}
-	if (flash_size > SIZE_MAX) {
-		return -EOVERFLOW;
-	}
 
 	ret = pm_device_action_run(flash, PM_DEVICE_ACTION_RESUME);
 	if (ret < 0) {
@@ -131,20 +158,27 @@ static int cmd_flash_erase_all(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	shell_warn(sh, "Destructively erasing all %llu bytes", flash_size);
-	ret = flash_erase(flash, 0, (size_t)flash_size);
-	if (ret == 0) {
-		uint8_t sample[16];
-		const uint64_t offsets[] = { 0U, flash_size / 2U, flash_size - sizeof(sample) };
+	for (off_t offset = 0; offset < (off_t)flash_size && ret == 0;
+	     offset += ERASE_BLOCK_SIZE) {
+		bool blank;
 
-		for (size_t i = 0; i < ARRAY_SIZE(offsets) && ret == 0; i++) {
-			ret = flash_read(flash, offsets[i], sample, sizeof(sample));
-			for (size_t j = 0; j < sizeof(sample) && ret == 0; j++) {
-				if (sample[j] != 0xffU) {
-					shell_error(sh, "Erase spot-check failed at 0x%08x",
-						    (uint32_t)(offsets[i] + j));
-					ret = -EIO;
-				}
-			}
+		if ((offset % (4 * 1024 * 1024)) == 0) {
+			shell_print(sh, "Erase at %u MiB, %u blocks erased", (unsigned int)(offset >> 20),
+				    erased);
+		}
+		ret = block_is_blank(offset, &blank);
+		if (ret < 0 || blank) {
+			continue;
+		}
+		ret = flash_erase(flash, offset, ERASE_BLOCK_SIZE);
+		if (ret < 0) {
+			break;
+		}
+		erased++;
+		ret = block_is_blank(offset, &blank);
+		if (ret == 0 && !blank) {
+			shell_error(sh, "Erase check failed at 0x%08x", (uint32_t)offset);
+			ret = -EIO;
 		}
 	}
 	(void)pm_device_action_run(flash, PM_DEVICE_ACTION_SUSPEND);
@@ -153,7 +187,7 @@ static int cmd_flash_erase_all(const struct shell *sh, size_t argc, char **argv)
 		return ret;
 	}
 
-	shell_print(sh, "Whole-chip erase completed; beginning/middle/end spot-check passed");
+	shell_print(sh, "Whole-chip erase completed, %u blocks erased, all blank", erased);
 	return 0;
 }
 
