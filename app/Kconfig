@@ -5,3 +5,9 @@ endmenu
 module = HWV
 module-str = HWV
 source "subsys/logging/Kconfig.template.log_config"
+
+config HWV_PBLBOOT
+	bool "Loaded by pblboot"
+	help
+	  HWV linked after pblboot and loaded by it: keeps pblboot's boot
+	  bits sane and adds hwv dfu, which restarts into pblboot's USB DFU.

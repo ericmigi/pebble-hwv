@@ -40,3 +40,7 @@ if (CONFIG_BOARD_CYBERDECK_EVT3)
       src/speaker_cyberdeck.c
   )
 endif()
+
+if (CONFIG_HWV_PBLBOOT)
+  target_sources(app PRIVATE src/pblboot.c)
+endif()

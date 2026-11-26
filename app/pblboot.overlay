@@ -1,0 +1,4 @@
+/* HWV loaded by pblboot: leave pblboot's 256 B of retained boot bits at the start of RAM alone */
+&sram0 {
+	reg = <0x20000100 (DT_SIZE_K(256) - 0x100)>;
+};
